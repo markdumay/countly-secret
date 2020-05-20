@@ -1,0 +1,11 @@
+FROM countly/frontend:20.04
+
+## Add a wait script to the image
+USER root
+ADD https://github.com/ufoscout/docker-compose-wait/releases/download/2.7.3/wait /wait
+RUN chmod +x /wait
+
+USER 1001:0
+
+## Add wait instruction to initialization command
+CMD /wait && /opt/countly/bin/docker/cmd.sh
