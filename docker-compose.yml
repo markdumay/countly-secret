@@ -1,0 +1,140 @@
+version: "3.7"
+
+networks:
+    backend:
+    frontend:
+
+secrets:
+    mongodb_root_username:
+        file: secrets/mongodb_root_username.txt
+        # external: true
+    mongodb_root_password:
+        file: secrets/mongodb_root_password.txt
+        # external: true
+    countly_mongodb_username:
+        file: secrets/countly_mongodb_username.txt
+        # external: true
+    countly_mongodb_password:
+        file: secrets/countly_mongodb_password.txt
+        # external: true
+
+services:
+    mongodb:
+        image: "mongo:4.2"
+        hostname: mongodb
+        environment:
+            # set root user and password to set mongo into authentication mode
+            - MONGO_INITDB_ROOT_USERNAME_FILE=/run/secrets/mongodb_root_username
+            - MONGO_INITDB_ROOT_PASSWORD_FILE=/run/secrets/mongodb_root_password
+            - MONGODB_DATABASE=${MONGODB_DATABASE}
+        volumes:
+            # make mongo database persistent
+            - ./data/mongodb:/data/db
+            # add folder with initialization script to create countly database user and password
+            - ./config/mongo:/docker-entrypoint-initdb.d:ro
+        networks:
+            backend:
+        secrets:
+            - mongodb_root_username
+            - mongodb_root_password
+            - countly_mongodb_username
+            - countly_mongodb_password
+        healthcheck:
+            test: [ "CMD", "echo", "'db.runCommand(\"ping\").ok'", "|", "mongo", "localhost", "--quiet" ]
+            timeout: 120s
+            interval: 10s
+            retries: 10
+        # deploy:
+        #     placement:
+        #         constraints: [node.role == manager]
+        #     replicas: 1
+        #     update_config:
+        #         parallelism: 2
+        #         delay: 10s
+        #     restart_policy:
+        #         condition: on-failure
+
+
+    api:
+        image: markdumay/countly-api:20.04
+        volumes:
+            - ./config/countly/config_api.js:/opt/countly/api/config.js:ro
+            - ./config/countly/config_frontend.js:/opt/countly/frontend/express/config.js:ro
+        environment:
+            - COUNTLY_CONFIG_API_MONGODB_HOST=mongodb
+            - COUNTLY_CONFIG_API_MONGODB_DB=${MONGODB_DATABASE}
+            - COUNTLY_CONFIG_FRONTEND_MONGODB_HOST=mongodb
+            - COUNTLY_CONFIG_FRONTEND_MONGODB_DB=${MONGODB_DATABASE}
+            - WAIT_HOSTS=mongodb:27017
+            - WAIT_SLEEP_INTERVAL=5
+            - WAIT_HOSTS_TIMEOUT=300
+            - COUNTLY_CONFIG_HOSTNAME=${DOMAINS_COUNTLY}
+        deploy:
+            restart_policy:
+                condition: on-failure
+                delay: 5s
+                max_attempts: 3
+                window: 600s
+        networks:
+            frontend:
+            backend:
+        secrets:
+            - countly_mongodb_username
+            - countly_mongodb_password
+        depends_on:
+            - mongodb
+
+    frontend:
+        image: markdumay/countly-frontend:20.04
+        volumes:
+            - ./config/countly/config_api.js:/opt/countly/api/config.js:ro
+            - ./config/countly/config_frontend.js:/opt/countly/frontend/express/config.js:ro
+        environment:
+            - COUNTLY_CONFIG_API_MONGODB_HOST=mongodb
+            - COUNTLY_CONFIG_API_MONGODB_DB=${MONGODB_DATABASE}
+            - COUNTLY_CONFIG_FRONTEND_MONGODB_HOST=mongodb
+            - COUNTLY_CONFIG_FRONTEND_MONGODB_DB=${MONGODB_DATABASE}
+            - WAIT_HOSTS=mongodb:27017
+            - WAIT_SLEEP_INTERVAL=5
+            - WAIT_HOSTS_TIMEOUT=300
+            - COUNTLY_CONFIG_HOSTNAME=${DOMAINS_COUNTLY}
+        networks:
+            frontend:
+            backend:
+        secrets:
+            - countly_mongodb_username
+            - countly_mongodb_password
+        depends_on:
+            - mongodb
+        deploy:
+            # There is usually no need in multiple frontends, so throttling down resources for it
+            mode: global
+            # resources:
+            #     limits:
+            #         cpus: '0.5'
+            restart_policy:
+                condition: on-failure
+                delay: 5s
+                max_attempts: 3
+                window: 600s
+
+    portal:
+        image: steveltn/https-portal:1
+        ports:
+            - 80:80
+            - 443:443
+        links:
+            - api
+            - frontend
+        restart: always
+        networks:
+            frontend:
+        volumes:
+            - ./data/portal:/var/lib/https-portal
+            - ./config/portal/http.conf.erb:/var/lib/nginx-conf/${DOMAINS_COUNTLY}.conf.erb:ro
+            - ./config/portal/https.conf.erb:/var/lib/nginx-conf/${DOMAINS_COUNTLY}.ssl.conf.erb:ro
+        environment:
+            DOMAINS: "${DOMAINS_COUNTLY} -> ${COUNTLY_FRONTEND_HOST}"
+            COUNTLY_API_HOST: "${COUNTLY_API_HOST}"
+            STAGE: local
+            # STAGE: production

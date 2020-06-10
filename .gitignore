@@ -1,0 +1,11 @@
+# dotenv environment variables file
+.env
+
+# Mounts for MongoDB and HTTPS portal
+/data
+
+# Secrets folder for testing purposes
+/secrets
+
+# Local filesystem files
+.DS_Store
