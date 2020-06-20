@@ -73,12 +73,11 @@ Not only will this help you access the Countly dashboard and API, but it is also
 It is recommended to test the services locally before deploying them to production. Running the services with `docker-compose` greatly simplifies the validation of the service logs. Below four steps will allow you to run the services on your local machine.
 
 ### Step 1 - Clone the Repository
-The first step is to clone the repository to a local folder. Assuming you are in the working folder of your choice, create a new directory `countly-secret` (or any folder name of your liking) and clone the repository files. The final `.` instructs git to put the files in the current directory.
+The first step is to clone the repository to a local folder. Assuming you are in the working folder of your choice, clone the repository files. Git automatically creates a new folder `countly-secret` and copies the files to this directory. The option `--recurse-submodules` ensures the embedded submodules are fetched too. Now change your working folder to be prepared for the next steps.
 
 ```console
-mkdir countly-secret
+git clone --recurse-submodules https://github.com/markdumay/countly-secret.git
 cd countly-secret
-git clone https://github.com/markdumay/countly-secret.git .
 ```
 
 ### Step 2 - Create Docker Secret Files
@@ -151,6 +150,15 @@ printf admin | docker secret create mongodb_root_username -
 openssl rand -base64 32 | docker secret create mongodb_root_password -
 printf countly | docker secret create countly_mongodb_username -
 openssl rand -base64 32 | docker secret create countly_mongodb_password -
+```
+
+If you do not feel comfortable copying secrets from your command line, you can use the wrapper `create_secret.sh`. This script prompts for a secret and ensures sensitive data is not displayed in your console. The script is available in the folder `/docker-secret` of your repository.
+
+```console
+./create_secret.sh mongodb_root_username
+./create_secret.sh mongodb_root_password
+./create_secret.sh countly_mongodb_username
+./create_secret.sh countly_mongodb_password
 ```
 
 ### Step 3 - Update the Docker Compose File
